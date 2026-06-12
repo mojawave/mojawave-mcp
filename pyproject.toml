@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "mojawave-mcp"
+version = "0.2.0"
+description = "MojaWave MCP server — connect Claude, ChatGPT, Gemini and any MCP-compatible AI to the MojaWave SMS Gateway"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11"
+keywords = ["mcp", "sms", "email", "mojawave", "tanzania", "ai", "llm"]
+dependencies = [
+    "mcp[cli]>=1.0",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+]
+
+[project.scripts]
+mojawave-mcp = "mojawave_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mojawave_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
