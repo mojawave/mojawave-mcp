@@ -41,8 +41,9 @@ mcp = FastMCP(
         "message and bulk-job status, and check credit balances. "
         "Phone numbers must be in E.164 format (e.g. +255712345678). "
         "For SMS, call list_sms_sender_ids first to discover which sender IDs are "
-        "approved and available — only approved IDs can be used in send_sms or "
-        "send_bulk_sms. "
+        "approved and available. If the list is empty or the user has no approved "
+        "sender IDs yet, use 'MojaWave' as the default shared sender ID — it is "
+        "always available as a fallback. "
         "For email, call list_email_domains and list_email_senders first to confirm "
         "which domains are verified and which from_email addresses are registered "
         "before attempting send_email. "
@@ -106,8 +107,9 @@ async def send_sms(
     Args:
         to: Recipient phone number in E.164 format (e.g. +255712345678).
         message: SMS text content (max 1600 characters).
-        sender_id: Approved sender ID shown to the recipient (1-11 alphanumeric
-            chars, e.g. MYAPP or MojaWave). Must be pre-approved on your account.
+        sender_id: Sender ID shown to the recipient (1-11 alphanumeric chars,
+            e.g. MYAPP). Use list_sms_sender_ids to find approved IDs. If none
+            exist, use 'MojaWave' as the default shared sender ID.
         schedule_at: Optional future delivery time in ISO-8601 UTC
             (e.g. 2026-06-15T09:00:00Z). Leave empty to send immediately.
     """
@@ -140,7 +142,8 @@ async def send_bulk_sms(
     Args:
         recipients: List of phone numbers in E.164 format (1-10,000).
         message: SMS text content (max 1600 characters).
-        sender_id: Approved sender ID (1-11 alphanumeric chars).
+        sender_id: Sender ID (1-11 alphanumeric chars). Use list_sms_sender_ids
+            to find approved IDs, or 'MojaWave' as the default fallback.
         name: Optional campaign name for your reference (e.g. "June Promo").
     """
     try:
@@ -162,8 +165,9 @@ async def send_bulk_sms(
 async def list_sms_sender_ids() -> str:
     """List approved SMS sender IDs available on your account.
 
-    Returns only IDs with status "approved" — these are the only ones that
-    can be used in the sender_id field of send_sms or send_bulk_sms.
+    Returns IDs with status "approved". If the list is empty, the user has
+    no custom sender IDs yet — use 'MojaWave' as the default shared sender
+    ID, which is always available as a fallback.
     Call this before sending to pick the correct sender ID.
     """
     try:
