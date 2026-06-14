@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mojawave-mcp"
-version = "0.2.0"
-description = "MojaWave MCP server — connect Claude, ChatGPT, Gemini and any MCP-compatible AI to the MojaWave SMS Gateway"
+version = "0.3.0"
+description = "MojaWave MCP server — connect Claude, ChatGPT, Gemini and any MCP-compatible AI to the MojaWave SMS and Email API"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.11"

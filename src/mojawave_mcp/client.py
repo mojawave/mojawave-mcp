@@ -6,7 +6,11 @@ Implements only the documented v1 endpoints:
     GET  /messages/{id}       — message details & delivery status
     POST /sms/bulk            — bulk send (async job)
     GET  /sms/bulk/{jobId}    — bulk job status
+    GET  /sms/sender-ids/approved — list approved SMS sender IDs (slim)
     GET  /credits             — SMS & email credit balances
+    GET  /email/domains       — list verified sending domains
+    GET  /email/senders       — list registered sender addresses
+    POST /email/send          — send a transactional email
 
 Reliability:
   * Retries 429 and 5xx with exponential backoff + jitter, honouring
@@ -90,7 +94,7 @@ class MojaWaveClient:
                 "X-API-Key": api_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "mojawave-mcp/0.2.0",
+                "User-Agent": "mojawave-mcp/0.3.0",
             },
             timeout=timeout,
         )
@@ -234,6 +238,9 @@ class MojaWaveClient:
     async def get_bulk_sms_job(self, job_id: str) -> dict:
         return await self._request("GET", f"/sms/bulk/{job_id}")
 
+    async def list_sms_sender_ids(self) -> dict:
+        return await self._request("GET", "/sms/sender-ids/approved")
+
     # ------------------------------------------------------------------
     # Messages
     # ------------------------------------------------------------------
@@ -247,3 +254,44 @@ class MojaWaveClient:
 
     async def get_credit_balance(self) -> dict:
         return await self._request("GET", "/credits")
+
+    # ------------------------------------------------------------------
+    # Email
+    # ------------------------------------------------------------------
+
+    async def list_email_domains(self) -> dict:
+        return await self._request("GET", "/email/domains")
+
+    async def list_email_senders(self) -> dict:
+        return await self._request("GET", "/email/senders")
+
+    async def send_email(
+        self,
+        to: str,
+        from_email: str,
+        subject: str,
+        *,
+        text: str | None = None,
+        html: str | None = None,
+        from_name: str | None = None,
+        reply_to: str | None = None,
+        cc: list[str] | None = None,
+        bcc: list[str] | None = None,
+        schedule_at: str | None = None,
+        tags: list[str] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> dict:
+        return await self._request("POST", "/email/send", json={
+            "to": to,
+            "from": from_email,
+            "subject": subject,
+            "text": text,
+            "html": html,
+            "from_name": from_name,
+            "reply_to": reply_to,
+            "cc": cc if cc else None,
+            "bcc": bcc if bcc else None,
+            "schedule_at": schedule_at,
+            "tags": tags if tags else None,
+            "metadata": metadata,
+        })

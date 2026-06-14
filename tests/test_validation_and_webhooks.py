@@ -1,6 +1,8 @@
 import pytest
 
 from mojawave_mcp.validation import (
+    validate_email_address,
+    validate_email_subject,
     validate_message,
     validate_phone,
     validate_recipients,
@@ -48,6 +50,31 @@ def test_validate_schedule_at():
     assert validate_schedule_at("2026-06-15T09:00:00Z") == "2026-06-15T09:00:00Z"
     with pytest.raises(ValueError):
         validate_schedule_at("next tuesday")
+
+
+def test_validate_email_address_ok():
+    assert validate_email_address("  user@example.com  ") == "user@example.com"
+    assert validate_email_address("first.last+tag@sub.domain.co") == "first.last+tag@sub.domain.co"
+
+
+@pytest.mark.parametrize("bad", ["notanemail", "@example.com", "user@", "user @example.com", ""])
+def test_validate_email_address_rejects(bad):
+    with pytest.raises(ValueError):
+        validate_email_address(bad)
+
+
+def test_validate_email_subject_ok():
+    assert validate_email_subject("  Hello world  ") == "Hello world"
+
+
+def test_validate_email_subject_empty():
+    with pytest.raises(ValueError):
+        validate_email_subject("   ")
+
+
+def test_validate_email_subject_too_long():
+    with pytest.raises(ValueError):
+        validate_email_subject("x" * 501)
 
 
 def test_webhook_signature_roundtrip():

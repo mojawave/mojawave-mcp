@@ -21,6 +21,8 @@ from mcp.server.fastmcp import FastMCP
 
 from mojawave_mcp.client import DEFAULT_BASE_URL, MojaWaveClient, MojaWaveError
 from mojawave_mcp.validation import (
+    validate_email_address,
+    validate_email_subject,
     validate_message,
     validate_phone,
     validate_recipients,
@@ -34,13 +36,18 @@ load_dotenv()
 mcp = FastMCP(
     "MojaWave",
     instructions=(
-        "You are connected to MojaWave, a unified SMS gateway for Tanzania. "
-        "You can send single and bulk SMS, look up message and bulk-job status, "
-        "and check credit balances. Phone numbers must be in E.164 format "
-        "(e.g. +255712345678). Sender IDs are 1-11 alphanumeric characters and "
-        "must be pre-approved on the account. "
-        "ALWAYS confirm the recipient(s), message text, and sender ID with the "
-        "user before calling send_sms or send_bulk_sms — these spend real credits "
+        "You are connected to MojaWave, a unified messaging platform for Tanzania. "
+        "You can send single and bulk SMS, send transactional email, look up "
+        "message and bulk-job status, and check credit balances. "
+        "Phone numbers must be in E.164 format (e.g. +255712345678). "
+        "For SMS, call list_sms_sender_ids first to discover which sender IDs are "
+        "approved and available — only approved IDs can be used in send_sms or "
+        "send_bulk_sms. "
+        "For email, call list_email_domains and list_email_senders first to confirm "
+        "which domains are verified and which from_email addresses are registered "
+        "before attempting send_email. "
+        "ALWAYS confirm the recipient(s), content, and sender with the user before "
+        "calling send_sms, send_bulk_sms, or send_email — these spend real credits "
         "and deliver real messages."
     ),
 )
@@ -152,6 +159,21 @@ async def send_bulk_sms(
 
 
 @mcp.tool()
+async def list_sms_sender_ids() -> str:
+    """List approved SMS sender IDs available on your account.
+
+    Returns only IDs with status "approved" — these are the only ones that
+    can be used in the sender_id field of send_sms or send_bulk_sms.
+    Call this before sending to pick the correct sender ID.
+    """
+    try:
+        result = await _client().list_sms_sender_ids()
+        return _fmt(result)
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@mcp.tool()
 async def get_bulk_sms_job(job_id: str) -> str:
     """Get the status and progress of a bulk SMS job.
 
@@ -224,6 +246,116 @@ async def verify_webhook_signature(payload: str, signature: str, secret: str) ->
     try:
         valid = verify_signature(payload, signature, secret)
         return _fmt({"valid": valid})
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+# ---------------------------------------------------------------------------
+# Email
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+async def list_email_domains() -> str:
+    """List all email sending domains registered on your account.
+
+    Call this before send_email to confirm which domains are verified and
+    available. Only domains with status "verified" can send mail.
+    """
+    try:
+        result = await _client().list_email_domains()
+        return _fmt(result)
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@mcp.tool()
+async def list_email_senders() -> str:
+    """List all registered sender addresses available for sending email.
+
+    Returns the email addresses you can use in the from_email field of
+    send_email. Each sender belongs to a verified domain.
+    """
+    try:
+        result = await _client().list_email_senders()
+        return _fmt(result)
+    except Exception as e:  # noqa: BLE001
+        return _err(e)
+
+
+@mcp.tool()
+async def send_email(
+    to: str,
+    from_email: str,
+    subject: str,
+    body: str = "",
+    html: str = "",
+    from_name: str = "",
+    cc: list[str] | None = None,
+    bcc: list[str] | None = None,
+    reply_to: str = "",
+    schedule_at: str = "",
+    tags: list[str] | None = None,
+) -> str:
+    """Send a transactional email from a registered sender address.
+
+    Costs 1 credit per recipient (to + each cc + each bcc).
+    At least one of body (plain text) or html is required.
+
+    Call list_email_senders first to confirm from_email is registered.
+    ALWAYS confirm to, subject, from_email, and body/html with the user
+    before sending — this spends real credits and delivers a real email.
+
+    Args:
+        to: Recipient email address (e.g. customer@example.com).
+        from_email: Registered sender address on a verified domain
+            (e.g. noreply@yourdomain.com). Use list_email_senders to find
+            valid values.
+        subject: Email subject line (max 500 chars).
+        body: Plain-text body. At least one of body or html is required.
+        html: Optional HTML body (e.g. "<p>Hello</p>"). Provide alongside
+            body as a fallback for clients that don't render HTML.
+        from_name: Optional display name shown in the recipient's inbox
+            (e.g. "Duka Masta Billing").
+        cc: Optional list of CC addresses. Each costs 1 credit.
+        bcc: Optional list of BCC addresses. Each costs 1 credit.
+        reply_to: Optional reply-to address if different from from_email.
+        schedule_at: Optional future delivery time in ISO-8601
+            (e.g. 2026-06-15T09:00:00Z). Naive datetimes (no Z/offset) are
+            treated as EAT (Africa/Dar_es_Salaam, UTC+3). Leave empty to
+            send immediately.
+        tags: Optional string labels for filtering in message history
+            (max 10).
+    """
+    try:
+        to = validate_email_address(to)
+        from_email = validate_email_address(from_email)
+        subject = validate_email_subject(subject)
+
+        text = body.strip() if body.strip() else None
+        html_body = html.strip() if html.strip() else None
+        if not text and not html_body:
+            raise ValueError("At least one of body or html is required.")
+
+        validated_cc = [validate_email_address(a) for a in cc] if cc else None
+        validated_bcc = [validate_email_address(a) for a in bcc] if bcc else None
+        reply = validate_email_address(reply_to) if reply_to.strip() else None
+        scheduled = validate_schedule_at(schedule_at) if schedule_at.strip() else None
+
+        result = await _client().send_email(
+            to=to,
+            from_email=from_email,
+            subject=subject,
+            text=text,
+            html=html_body,
+            from_name=from_name.strip() or None,
+            reply_to=reply,
+            cc=validated_cc,
+            bcc=validated_bcc,
+            schedule_at=scheduled,
+            tags=tags if tags else None,
+        )
+        return _fmt(result)
     except Exception as e:  # noqa: BLE001
         return _err(e)
 

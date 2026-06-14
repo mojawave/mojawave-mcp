@@ -13,9 +13,13 @@ from datetime import datetime
 _E164 = re.compile(r"^\+[1-9]\d{6,14}$")
 # Sender ID: 1-11 alphanumeric characters (telco rule for alphanumeric IDs).
 _SENDER_ID = re.compile(r"^[A-Za-z0-9]{1,11}$")
+# Email: simplified RFC-5321 local@domain.tld — catches obvious malformed
+# addresses without being a ReDoS vector. The API does the authoritative check.
+_EMAIL = re.compile(r"^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$")
 
 MAX_MESSAGE_CHARS = 1600
 MAX_BULK_RECIPIENTS = 10_000
+MAX_SUBJECT_CHARS = 500
 
 
 def validate_phone(phone: str) -> str:
@@ -69,3 +73,24 @@ def validate_schedule_at(value: str) -> str:
             "Use e.g. 2026-06-15T09:00:00Z."
         ) from exc
     return value
+
+
+def validate_email_address(email: str) -> str:
+    email = email.strip()
+    if not _EMAIL.match(email):
+        raise ValueError(
+            f"'{email}' is not a valid email address. "
+            "Use the format user@example.com."
+        )
+    return email
+
+
+def validate_email_subject(subject: str) -> str:
+    subject = subject.strip()
+    if not subject:
+        raise ValueError("subject must not be empty.")
+    if len(subject) > MAX_SUBJECT_CHARS:
+        raise ValueError(
+            f"subject is {len(subject)} characters; the maximum is {MAX_SUBJECT_CHARS}."
+        )
+    return subject
