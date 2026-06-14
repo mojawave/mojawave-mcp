@@ -1,7 +1,7 @@
 # mojawave-mcp
 
 MojaWave MCP server — connect any MCP-compatible AI assistant to the
-[MojaWave](https://mojawave.com) SMS Gateway.
+[MojaWave](https://mojawave.com) SMS and Email API.
 
 Works with **Claude** (Desktop & Code), **ChatGPT** (via OpenAI Agents SDK),
 **Gemini** (via Google ADK), **Cursor**, **Windsurf**, and any other tool that
@@ -14,18 +14,71 @@ Every tool maps to a documented endpoint of the [MojaWave public API](https://mo
 
 ## Available tools
 
+### SMS
+
 | Tool | API endpoint | What it does |
 | --- | --- | --- |
+| `list_sms_sender_ids` | `GET /sms/sender-ids/approved` | List approved sender IDs available on your account — call this before sending to pick the right `sender_id` |
 | `send_sms` | `POST /sms/send` | Send a single SMS, optionally scheduled (`schedule_at`) |
 | `send_bulk_sms` | `POST /sms/bulk` | Start an async bulk SMS job for up to 10,000 recipients — returns a `job_id` |
 | `get_bulk_sms_job` | `GET /sms/bulk/{id}` | Poll the status and progress of a bulk SMS job |
+
+### Email
+
+| Tool | API endpoint | What it does |
+| --- | --- | --- |
+| `list_email_domains` | `GET /email/domains` | List sending domains and their verification status — call before sending to confirm a domain is verified |
+| `list_email_senders` | `GET /email/senders` | List registered sender addresses available as `from_email` |
+| `send_email` | `POST /email/send` | Send a transactional email — supports HTML + plain text, CC/BCC, reply-to, attachments, scheduled delivery, and tags |
+
+### Messages & account
+
+| Tool | API endpoint | What it does |
+| --- | --- | --- |
 | `get_message` | `GET /messages/{id}` | Get full details and delivery timeline for a single message |
 | `get_credit_balance` | `GET /credits` | Check current SMS and email credit balances |
 | `verify_webhook_signature` | — | Verify a webhook's `X-MojaWave-Signature` (HMAC-SHA256) |
 
 Inputs are validated before any request is made (E.164 phone numbers, 1–11-char
-sender IDs, message length, recipient count, ISO-8601 schedule times), and the
-client retries `429`/`5xx` responses with backoff that honours `Retry-After`.
+sender IDs, message length, recipient count, ISO-8601 schedule times, email
+addresses, subject length), and the client retries `429`/`5xx` responses with
+backoff that honours `Retry-After`.
+
+---
+
+## Recommended workflows
+
+### Sending SMS
+
+```text
+1. list_sms_sender_ids()
+   → [{ "sender_id": "MYAPP", "status": "approved" }]
+
+2. send_sms(to="+255712345678", message="Hello!", sender_id="MYAPP")
+   → { "id": "...", "status": "sent" }
+```
+
+### Sending email
+
+```text
+1. list_email_domains()    — confirm your domain is "verified"
+2. list_email_senders()    — pick a valid from_email address
+3. send_email(to="customer@example.com", from_email="noreply@yourdomain.com",
+              subject="Hello", body="Hi there")
+   → { "id": "...", "status": "queued" }
+```
+
+### Bulk SMS
+
+```text
+1. list_sms_sender_ids()   — pick an approved sender ID
+
+2. send_bulk_sms(recipients=["+255700000001", ...], message="...", sender_id="MYAPP")
+   → { "job_id": "ec0fb57c-...", "status": "scheduled", "total_recipients": 500 }
+
+3. get_bulk_sms_job(job_id="ec0fb57c-...")
+   → { "status": "completed", "total_recipients": 500, "total_credits_cost": 500 }
+```
 
 ---
 
@@ -156,7 +209,7 @@ mojawave_tools = MCPToolset(
 agent = LlmAgent(
     model="gemini-2.0-flash",
     name="mojawave_agent",
-    instruction="You can send SMS and check credits via MojaWave.",
+    instruction="You can send SMS and email and check credits via MojaWave.",
     tools=[mojawave_tools],
 )
 ```
@@ -193,29 +246,12 @@ stdio transport used by Claude Desktop and most IDE extensions.
 
 ---
 
-## Bulk SMS workflow
-
-Bulk sends are asynchronous. `send_bulk_sms` returns a `job_id` immediately;
-use `get_bulk_sms_job` to poll until the job completes:
-
-```text
-1. send_bulk_sms(recipients=[...], message="...", sender_id="MYAPP")
-   → { "job_id": "ec0fb57c-...", "status": "scheduled", "total_recipients": 500 }
-
-2. get_bulk_sms_job(job_id="ec0fb57c-...")
-   → { "status": "processing", "progress_percent": 42, "sent_count": 210 }
-
-3. get_bulk_sms_job(job_id="ec0fb57c-...")
-   → { "status": "completed", "total_recipients": 500, "total_credits_cost": 500 }
-```
-
----
-
 ## Security notes
 
 - Never commit your API key. Use environment variables or a secrets manager.
 - Use **test keys** (`sk_test_mw_…`) in CI/CD and development — no real messages are sent and no credits are charged.
 - Scope API keys to only the permissions they need from the MojaWave dashboard.
+- The AI is instructed to **always confirm** recipient, content, and sender with you before calling `send_sms`, `send_bulk_sms`, or `send_email` — these spend real credits and deliver real messages.
 - Webhook payloads are signed with `X-MojaWave-Signature` (HMAC-SHA256) — verify signatures on your server before trusting delivery events.
 
 ---
