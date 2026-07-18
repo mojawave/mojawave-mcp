@@ -36,20 +36,10 @@ load_dotenv()
 mcp = FastMCP(
     "MojaWave",
     instructions=(
-        "You are connected to MojaWave, a unified messaging platform for Tanzania. "
-        "You can send single and bulk SMS, send transactional email, look up "
-        "message and bulk-job status, and check credit balances. "
-        "Phone numbers must be in E.164 format (e.g. +255712345678). "
-        "For SMS, call list_sms_sender_ids first to discover which sender IDs are "
-        "approved and available. If the list is empty or the user has no approved "
-        "sender IDs yet, use 'MojaWave' as the default shared sender ID — it is "
-        "always available as a fallback. "
-        "For email, call list_email_domains and list_email_senders first to confirm "
-        "which domains are verified and which from_email addresses are registered "
-        "before attempting send_email. "
-        "ALWAYS confirm the recipient(s), content, and sender with the user before "
-        "calling send_sms, send_bulk_sms, or send_email — these spend real credits "
-        "and deliver real messages."
+        "MojaWave messaging API for Tanzania. Phone numbers must be E.164 (e.g. +255712345678). "
+        "SMS: call list_sms_sender_ids first; if empty use sender_id='MojaWave' (always available). "
+        "Email: call list_email_domains + list_email_senders first to pick a verified from_email. "
+        "ALWAYS confirm recipient, content, and sender with the user before send_sms, send_bulk_sms, or send_email."
     ),
 )
 
@@ -71,7 +61,7 @@ def _client() -> MojaWaveClient:
 
 
 def _fmt(result: dict) -> str:
-    return json.dumps(result, indent=2, default=str)
+    return json.dumps(result, default=str)
 
 
 def _err(e: Exception) -> str:
@@ -96,22 +86,16 @@ def _err(e: Exception) -> str:
 async def send_sms(
     to: str,
     message: str,
-    sender_id: str,
+    sender_id: str = "MojaWave",
     schedule_at: str = "",
 ) -> str:
-    """Send a single SMS message, optionally scheduled for future delivery.
-
-    Confirm recipient, message, and sender_id with the user first — this spends
-    real credits.
+    """Send a single SMS. Confirm with user before calling — spends real credits.
 
     Args:
-        to: Recipient phone number in E.164 format (e.g. +255712345678).
-        message: SMS text content (max 1600 characters).
-        sender_id: Sender ID shown to the recipient (1-11 alphanumeric chars,
-            e.g. MYAPP). Use list_sms_sender_ids to find approved IDs. If none
-            exist, use 'MojaWave' as the default shared sender ID.
-        schedule_at: Optional future delivery time in ISO-8601 UTC
-            (e.g. 2026-06-15T09:00:00Z). Leave empty to send immediately.
+        to: Recipient in E.164 format (e.g. +255712345678).
+        message: SMS text (max 1600 chars).
+        sender_id: Sender ID (default: MojaWave). Use list_sms_sender_ids to find approved IDs.
+        schedule_at: ISO-8601 UTC delivery time, or empty to send immediately.
     """
     try:
         to = validate_phone(to)
@@ -130,21 +114,16 @@ async def send_sms(
 async def send_bulk_sms(
     recipients: list[str],
     message: str,
-    sender_id: str,
+    sender_id: str = "MojaWave",
     name: str = "",
 ) -> str:
-    """Send the same SMS to up to 10,000 recipients. Processed asynchronously —
-    returns a job_id immediately; use get_bulk_sms_job to track progress.
-
-    Confirm the recipient list size, message, and sender_id with the user first —
-    this spends real credits.
+    """Send bulk SMS to up to 10,000 recipients. Returns job_id; poll with get_bulk_sms_job. Confirm with user first — spends real credits.
 
     Args:
-        recipients: List of phone numbers in E.164 format (1-10,000).
-        message: SMS text content (max 1600 characters).
-        sender_id: Sender ID (1-11 alphanumeric chars). Use list_sms_sender_ids
-            to find approved IDs, or 'MojaWave' as the default fallback.
-        name: Optional campaign name for your reference (e.g. "June Promo").
+        recipients: E.164 phone numbers (1–10,000).
+        message: SMS text (max 1600 chars).
+        sender_id: Sender ID (default: MojaWave). Use list_sms_sender_ids to find approved IDs.
+        name: Optional campaign name.
     """
     try:
         recipients = validate_recipients(recipients)
@@ -163,13 +142,7 @@ async def send_bulk_sms(
 
 @mcp.tool()
 async def list_sms_sender_ids() -> str:
-    """List approved SMS sender IDs available on your account.
-
-    Returns IDs with status "approved". If the list is empty, the user has
-    no custom sender IDs yet — use 'MojaWave' as the default shared sender
-    ID, which is always available as a fallback.
-    Call this before sending to pick the correct sender ID.
-    """
+    """List approved SMS sender IDs. If empty, use 'MojaWave' as the default shared sender ID."""
     try:
         result = await _client().list_sms_sender_ids()
         return _fmt(result)
@@ -179,10 +152,10 @@ async def list_sms_sender_ids() -> str:
 
 @mcp.tool()
 async def get_bulk_sms_job(job_id: str) -> str:
-    """Get the status and progress of a bulk SMS job.
+    """Get status and progress of a bulk SMS job.
 
     Args:
-        job_id: The job UUID returned by send_bulk_sms.
+        job_id: UUID returned by send_bulk_sms.
     """
     try:
         if not job_id.strip():
@@ -200,10 +173,10 @@ async def get_bulk_sms_job(job_id: str) -> str:
 
 @mcp.tool()
 async def get_message(message_id: str) -> str:
-    """Get full details and delivery status (timeline) for a single message.
+    """Get delivery status and timeline for a message.
 
     Args:
-        message_id: The UUID of the message returned when it was sent.
+        message_id: UUID returned when the message was sent.
     """
     try:
         if not message_id.strip():
@@ -221,7 +194,7 @@ async def get_message(message_id: str) -> str:
 
 @mcp.tool()
 async def get_credit_balance() -> str:
-    """Get current SMS and email credit balances for your organization."""
+    """Get current SMS and email credit balances."""
     try:
         result = await _client().get_credit_balance()
         return _fmt(result)
@@ -236,16 +209,12 @@ async def get_credit_balance() -> str:
 
 @mcp.tool()
 async def verify_webhook_signature(payload: str, signature: str, secret: str) -> str:
-    """Verify a MojaWave webhook's HMAC-SHA256 signature.
-
-    Pass the RAW request body (exactly as received), the value of the
-    X-MojaWave-Signature header, and your webhook signing secret. Returns whether
-    the signature is valid — only act on webhook events that verify as valid.
+    """Verify a webhook's X-MojaWave-Signature (HMAC-SHA256) locally — no API call.
 
     Args:
-        payload: The raw webhook request body (do not re-serialize it).
-        signature: The X-MojaWave-Signature header value.
-        secret: Your webhook signing secret (whsec_...).
+        payload: Raw request body (do not parse first).
+        signature: X-MojaWave-Signature header value.
+        secret: Webhook signing secret.
     """
     try:
         valid = verify_signature(payload, signature, secret)
@@ -261,11 +230,7 @@ async def verify_webhook_signature(payload: str, signature: str, secret: str) ->
 
 @mcp.tool()
 async def list_email_domains() -> str:
-    """List all email sending domains registered on your account.
-
-    Call this before send_email to confirm which domains are verified and
-    available. Only domains with status "verified" can send mail.
-    """
+    """List email sending domains. Only "verified" domains can send mail."""
     try:
         result = await _client().list_email_domains()
         return _fmt(result)
@@ -275,11 +240,7 @@ async def list_email_domains() -> str:
 
 @mcp.tool()
 async def list_email_senders() -> str:
-    """List all registered sender addresses available for sending email.
-
-    Returns the email addresses you can use in the from_email field of
-    send_email. Each sender belongs to a verified domain.
-    """
+    """List registered sender addresses usable as from_email in send_email."""
     try:
         result = await _client().list_email_senders()
         return _fmt(result)
@@ -301,35 +262,20 @@ async def send_email(
     schedule_at: str = "",
     tags: list[str] | None = None,
 ) -> str:
-    """Send a transactional email from a registered sender address.
-
-    Costs 1 credit per recipient (to + each cc + each bcc).
-    At least one of body (plain text) or html is required.
-
-    Call list_email_senders first to confirm from_email is registered.
-    ALWAYS confirm to, subject, from_email, and body/html with the user
-    before sending — this spends real credits and delivers a real email.
+    """Send a transactional email. Confirm with user first — spends real credits.
 
     Args:
-        to: Recipient email address (e.g. customer@example.com).
-        from_email: Registered sender address on a verified domain
-            (e.g. noreply@yourdomain.com). Use list_email_senders to find
-            valid values.
-        subject: Email subject line (max 500 chars).
-        body: Plain-text body. At least one of body or html is required.
-        html: Optional HTML body (e.g. "<p>Hello</p>"). Provide alongside
-            body as a fallback for clients that don't render HTML.
-        from_name: Optional display name shown in the recipient's inbox
-            (e.g. "Duka Masta Billing").
-        cc: Optional list of CC addresses. Each costs 1 credit.
-        bcc: Optional list of BCC addresses. Each costs 1 credit.
-        reply_to: Optional reply-to address if different from from_email.
-        schedule_at: Optional future delivery time in ISO-8601
-            (e.g. 2026-06-15T09:00:00Z). Naive datetimes (no Z/offset) are
-            treated as EAT (Africa/Dar_es_Salaam, UTC+3). Leave empty to
-            send immediately.
-        tags: Optional string labels for filtering in message history
-            (max 10).
+        to: Recipient email address.
+        from_email: Registered sender (use list_email_senders to find valid values).
+        subject: Subject line (max 500 chars).
+        body: Plain-text body (required if html is empty).
+        html: HTML body (required if body is empty).
+        from_name: Optional display name.
+        cc: Optional CC addresses (1 credit each).
+        bcc: Optional BCC addresses (1 credit each).
+        reply_to: Optional reply-to address.
+        schedule_at: ISO-8601 delivery time, or empty to send now.
+        tags: Optional labels for filtering (max 10).
     """
     try:
         to = validate_email_address(to)

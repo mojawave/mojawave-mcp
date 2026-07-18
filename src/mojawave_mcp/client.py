@@ -94,7 +94,7 @@ class MojaWaveClient:
                 "X-API-Key": api_key,
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "mojawave-mcp/0.3.2",
+                "User-Agent": "mojawave-mcp/0.3.3",
             },
             timeout=timeout,
         )
